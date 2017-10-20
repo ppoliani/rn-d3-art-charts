@@ -47,7 +47,7 @@ export default class App extends Component {
   }
 
   render() {
-    const height = 200;
+    const height = 500;
     const width = 500;
 
     return (
@@ -55,19 +55,13 @@ export default class App extends Component {
         <View style={styles.container} >
           <Text style={styles.chart_title}>Distribution of spending this month</Text>
           <Pie
-            pieWidth={150}
-            pieHeight={150}
+            pieWidth={300}
+            pieHeight={300}
             onItemSelected={this._onPieItemSelected}
             colors={Theme.colors}
             width={width}
             height={height}
             data={data.spendingsLastMonth} />
-          <Text style={styles.chart_title}>Spending per year in {data.spendingsLastMonth[this.state.activeIndex].name}</Text>
-          <AreaSpline
-            width={width}
-            height={height}
-            data={this.state.spendingsPerYear}
-            color={Theme.colors[this.state.activeIndex]} />
         </View>
       </ScrollView>
     );

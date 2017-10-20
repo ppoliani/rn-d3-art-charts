@@ -10,6 +10,7 @@ import {
   LayoutAnimation,
   Dimensions,
   TouchableWithoutFeedback,
+  TouchableOpacity
 } from 'react-native';
 
 const {
@@ -44,9 +45,12 @@ type Props = {
   onItemSelected: any
 };
 
+
 type State = {
   highlightedIndex: number,
 };
+
+const ARC_WIDTH = 40;
 
 class Pie extends React.Component {
 
@@ -56,10 +60,10 @@ class Pie extends React.Component {
     super(props);
     this.state = { highlightedIndex: 0 };
     this._createPieChart = this._createPieChart.bind(this);
+    this.handleTextOnPress = this.handleTextOnPress.bind(this);
     this._value = this._value.bind(this);
     this._label = this._label.bind(this);
     this._color = this._color.bind(this);
-    this._onPieItemSelected = this._onPieItemSelected.bind(this);
   }
 
   // methods used to tranform data into piechart:
@@ -70,22 +74,25 @@ class Pie extends React.Component {
 
   _color(index) { return Theme.colors[index]; }
 
-  _createPieChart(index) {
+  _createPieChart(index){
+    const radius = this.getPieRadius();
+    const innerRadius = this.getInnerRadius();
 
     var arcs = d3.shape.pie()
         .value(this._value)
         (this.props.data);
 
     var hightlightedArc = d3.shape.arc()
-      .outerRadius(this.props.pieWidth/2 + 10)
+      .outerRadius(radius + 20)
       .padAngle(.05)
-      .innerRadius(30);
+      .innerRadius(innerRadius);
 
     var arc = d3.shape.arc()
-      .outerRadius(this.props.pieWidth/2)
-      .padAngle(.05)
-      .innerRadius(30);
+      .outerRadius(radius)
+      .padAngle(.035)
+      .innerRadius(innerRadius);
 
+    this._arcData = arcs;
     var arcData = arcs[index];
     var path = (this.state.highlightedIndex == index) ? hightlightedArc(arcData) : arc(arcData);
 
@@ -95,46 +102,98 @@ class Pie extends React.Component {
      };
   }
 
-  _onPieItemSelected(index) {
-    this.setState({...this.state, highlightedIndex: index});
-    this.props.onItemSelected(index);
+  getPieCenter() {
+    const marginTop = styles.container.marginTop;
+    const marginLeft = styles.container.marginLeft;
+    const centerX = this.props.pieHeight / 2 + marginLeft;
+    const centerY = this.props.pieHeight / 2 + marginTop;
+
+    return [centerX, centerY];
+  }
+
+  getPieRadius() {
+    return this.props.pieWidth / 2;
+  }
+
+  getInnerRadius() {
+    return this.getPieRadius() - ARC_WIDTH;
+  }
+
+  getTextPosition() {
+    return [
+      this.getInnerRadius() + styles.container.marginLeft + ARC_WIDTH,
+      this.getInnerRadius() + styles.container.marginTop + ARC_WIDTH,
+    ]
+  }
+
+  isPointWithinAnArc(x, y) {
+    const [cx, cy] = this.getPieCenter();
+    const radius = this.getPieRadius();
+    const innerRadius = this.getInnerRadius();
+    const dist = ((x - cx) ** 2) + ((y - cy) ** 2);
+
+    return dist <= radius ** 2 && dist >= innerRadius ** 2;
+  }
+
+  handleTextOnPress() {
+    console.log('Text clicked')
+  }
+
+  handleSurfaceClick(event) {
+    const {locationX: x, locationY: y} = event.nativeEvent
+    const [cx, cy] = this.getPieCenter();
+    const diffY = y - cy;
+    const diffX = x - cx;
+    const angle = Math.atan2(diffY, diffX);
+
+    // Don't ask why I did this for the following case? Just trial and fail
+    // it looks like the top left quarter has some subtleties in the way we calculate the angle
+    const normalizedAngle = diffY < 0 && diffX < 0
+      ? angle + (Math.PI * 2) + Math.PI / 2
+      : angle + (Math.PI / 2)
+
+    if(this.isPointWithinAnArc(x, y)) {
+      const index = this._arcData.findIndex(a => normalizedAngle >= a.startAngle && normalizedAngle <= a.endAngle)
+      this.setState({...this.state, highlightedIndex: index});
+      this.props.onItemSelected(index);
+    }
+  }
+
+  getTextStyles() {
+    const [left, top] = this.getTextPosition()
+    const s = Object.assign({}, styles.floatingTextStyle, {left, top});
+    return StyleSheet.create(s);
   }
 
   render() {
-    const margin = styles.container.margin;
-    const x = this.props.pieWidth / 2 + margin;
-    const y = this.props.pieHeight / 2 + margin;
+    const [x, y] = this.getPieCenter();
+    const label = this._label(this.props.data[this.state.highlightedIndex]);
 
     return (
       <View width={this.props.width} height={this.props.height}>
-        <Surface width={this.props.width} height={this.props.height}>
-           <Group x={x} y={y}>
-           {
-              this.props.data.map( (item, index) =>
-              (<AnimShape
-                 key={'pie_shape_' + index}
-                 color={this._color(index)}
-                 d={ () => this._createPieChart(index)}
-              />)
-              )
-            }
-           </Group>
-        </Surface>
-        <View style={{position: 'absolute', top:margin, left: 2*margin + this.props.pieWidth}}>
-          {
-            this.props.data.map( (item, index) =>
-            {
-              var fontWeight = this.state.highlightedIndex == index ? 'bold' : 'normal';
-              return (
-                <TouchableWithoutFeedback key={index} onPress={() => this._onPieItemSelected(index)}>
-                  <View>
-                    <Text style={[styles.label, {color: this._color(index), fontWeight: fontWeight}]}>{this._label(item)}: {this._value(item)}%</Text>
-                  </View>
-                </TouchableWithoutFeedback>
-              );
-            })
-          }
+        <View style={this.getTextStyles()}
+          width={this.props.pieWidth / 2}
+          height={this.props.pieHeight / 2}>
+            <Text style={styles.text} onPress={() => this.handleTextOnPress(label)}>{label}</Text>
         </View>
+        <TouchableOpacity
+          activeOpacity={1}
+          onPress={(e) => this.handleSurfaceClick(e)}>
+            <Surface width={this.props.width} height={this.props.height + 10}>
+              <Group x={x} y={y}>
+              {
+                  this.props.data.map( (item, index) =>
+                    (
+                      <AnimShape
+                        key={'pie_shape_' + index}
+                        color={this._color(index)}
+                        d={ () => this._createPieChart(index)} />
+                    )
+                  )
+                }
+              </Group>
+            </Surface>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -142,12 +201,28 @@ class Pie extends React.Component {
 
 const styles = {
   container: {
-    margin: 20,
+    marginTop: 40,
+    marginLeft: 40
   },
   label: {
     fontSize: 15,
     marginTop: 5,
     fontWeight: 'normal',
+  },
+
+  floatingTextStyle: {
+    position: 'absolute',
+    flex:1,
+    flexDirection:'row',
+    alignItems:'center',
+    justifyContent:'center',
+    alignItems: 'center',
+    zIndex: 100
+  },
+
+  text: {
+    fontSize: 20,
+    backgroundColor: 'transparent'
   }
 };
 
